@@ -256,6 +256,16 @@ export function ChevronRightIcon({ size = 24, ...props }: IconProps) {
   ));
 }
 
+export function MedalIcon({ size = 24, ...props }: IconProps) {
+  return svg(size, props, (
+    <>
+      <circle cx="12" cy="14" r="6" />
+      <path d="M9 2h6l-1.5 5h-3L9 2z" />
+      <path d="M9 7l-3-5M15 7l3-5" />
+    </>
+  ));
+}
+
 // --- Icon map & dynamic rendering ---
 
 export const ICON_MAP: Record<string, React.FC<IconProps>> = {
@@ -283,6 +293,7 @@ export const ICON_MAP: Record<string, React.FC<IconProps>> = {
   "chevron-left": ChevronLeftIcon,
   "chevron-right": ChevronRightIcon,
   "check": CheckIcon,
+  "medal": MedalIcon,
 };
 
 const EMOJI_TO_ICON: Record<string, string> = {

@@ -23,6 +23,7 @@ const STATUS_LABELS: Record<string, string> = {
 const ACTIVITY_TYPES = [
   { type: "coach", label: "Coach Session" },
   { type: "match", label: "Game" },
+  { type: "tournament", label: "Tournament" },
   { type: "gym", label: "Gym" },
   { type: "drilling", label: "Drilling" },
   { type: "recovery", label: "Recovery" },
@@ -30,7 +31,9 @@ const ACTIVITY_TYPES = [
 
 type ActivityType = typeof ACTIVITY_TYPES[number]["type"];
 
-const emptyDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode };
+const emptyDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "" };
+
+const TOURNAMENT_STAGES = ["Groups", "Round of 16", "Quarter Finals", "Semi Finals", "Final", "Consolation"] as const;
 
 const cardStyle: React.CSSProperties = {
   background: "var(--bg-glass)",
@@ -160,11 +163,15 @@ export default function TodayPage() {
     const label = ACTIVITY_TYPES.find((a) => a.type === activeType)?.label ?? activeType;
     const parsedCost = parseFloat(actDetails.costAmount);
     const costUsd = !isNaN(parsedCost) && parsedCost > 0 ? toUSD(parsedCost, actDetails.costCurrency) : null;
+    const isTournament = activeType === "tournament";
+    const tournamentComment = isTournament
+      ? [actDetails.tournamentStage, actDetails.tournamentLocation].filter(Boolean).join(" · ") || null
+      : null;
     addActivity({
       description: actDetails.title.trim() || label,
       session_type: activeType,
-      focus: actDetails.focus || undefined,
-      comment: actDetails.notes.trim() || null,
+      focus: isTournament ? (actDetails.tournamentLevel || undefined) : (actDetails.focus || undefined),
+      comment: isTournament ? tournamentComment : (actDetails.notes.trim() || null),
       duration_minutes: parseDurationToMinutes(actDetails.duration) || null,
       cost_usd: costUsd,
     });
@@ -617,18 +624,20 @@ export default function TodayPage() {
                 display: "flex", flexDirection: "column", gap: "12px",
               }}
             >
-              <div>
-                <p style={fieldLabelStyle}>
-                  Title <span style={{ fontWeight: 400, textTransform: "none", opacity: 0.6 }}>(optional)</span>
-                </p>
-                <input
-                  type="text"
-                  placeholder={ACTIVITY_TYPES.find((a) => a.type === activeType)?.label ?? "Session title..."}
-                  value={actDetails.title}
-                  onChange={(e) => setActDetails((d) => ({ ...d, title: e.target.value }))}
-                  style={inputStyle}
-                />
-              </div>
+              {activeType !== "tournament" && (
+                <div>
+                  <p style={fieldLabelStyle}>
+                    Title <span style={{ fontWeight: 400, textTransform: "none", opacity: 0.6 }}>(optional)</span>
+                  </p>
+                  <input
+                    type="text"
+                    placeholder={ACTIVITY_TYPES.find((a) => a.type === activeType)?.label ?? "Session title..."}
+                    value={actDetails.title}
+                    onChange={(e) => setActDetails((d) => ({ ...d, title: e.target.value }))}
+                    style={inputStyle}
+                  />
+                </div>
+              )}
               <div>
                 <p style={fieldLabelStyle}>Duration</p>
                 <select
@@ -731,6 +740,61 @@ export default function TodayPage() {
                     </button>
                   </div>
                 </div>
+              )}
+              {/* Tournament-specific fields */}
+              {activeType === "tournament" && (
+                <>
+                  <div>
+                    <p style={fieldLabelStyle}>Tournament Name</p>
+                    <input
+                      type="text" placeholder="e.g. Copa Padel Madrid"
+                      value={actDetails.title}
+                      onChange={(e) => setActDetails((d) => ({ ...d, title: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <p style={fieldLabelStyle}>Level</p>
+                    <input
+                      type="text" placeholder="e.g. P1000, Open, WPT"
+                      value={actDetails.tournamentLevel}
+                      onChange={(e) => setActDetails((d) => ({ ...d, tournamentLevel: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <p style={fieldLabelStyle}>Location</p>
+                    <input
+                      type="text" placeholder="e.g. Madrid, Spain"
+                      value={actDetails.tournamentLocation}
+                      onChange={(e) => setActDetails((d) => ({ ...d, tournamentLocation: e.target.value }))}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div>
+                    <p style={fieldLabelStyle}>Stage</p>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      {TOURNAMENT_STAGES.map((stage) => {
+                        const active = actDetails.tournamentStage === stage;
+                        return (
+                          <button
+                            key={stage}
+                            onClick={() => setActDetails((d) => ({ ...d, tournamentStage: active ? "" : stage }))}
+                            style={{
+                              padding: "6px 12px", borderRadius: "var(--radius-pill)", fontSize: "13px", fontWeight: 500,
+                              border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                              backgroundColor: active ? "var(--text-primary)" : "#fff",
+                              color: active ? "#fff" : "var(--text-primary)",
+                              cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                            }}
+                          >
+                            {stage}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
               )}
               <div>
                 <p style={fieldLabelStyle}>Notes</p>

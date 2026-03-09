@@ -22,19 +22,30 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "@/components/ui/Icons";
-import { SESSION_TYPES, SESSION_TYPE_ICONS, SESSION_DURATIONS, SESSION_FOCUSES } from "@/lib/data/constants";
+import { SESSION_TYPES, SESSION_TYPE_ICONS, SESSION_DURATIONS, SESSION_FOCUSES, FEELINGS, SESSION_STATUSES } from "@/lib/data/constants";
 import { CURRENCIES, toUSD, formatUSD } from "@/lib/utils/currency";
 import type { CurrencyCode } from "@/lib/utils/currency";
+import type { SessionStatus, Feeling } from "@/types";
 
 const ACTIVITY_TYPES = [
   { type: "coach", label: "Coach Session" },
   { type: "match", label: "Game" },
+  { type: "tournament", label: "Tournament" },
   { type: "gym", label: "Gym" },
   { type: "drilling", label: "Drilling" },
   { type: "recovery", label: "Recovery" },
 ] as const;
 type ActivityType = typeof ACTIVITY_TYPES[number]["type"];
-const emptyActDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode };
+const emptyActDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "" };
+
+const STATUS_LABELS: Record<string, string> = {
+  planned: "Planned",
+  completed: "Completed",
+  modified: "Modified",
+  skipped: "Skipped",
+};
+
+const TOURNAMENT_STAGES = ["Groups", "Round of 16", "Quarter Finals", "Semi Finals", "Final", "Consolation"] as const;
 
 type ViewMode = "overview" | "template" | "dayByDay";
 
@@ -101,7 +112,7 @@ export default function PlanPage() {
   const [weekStart, setWeekStart] = useState(() => getWeekStart(today));
 
   const weekEnd = addDays(weekStart, 6);
-  const { logs, loading: logsLoading } = useDateRangeLogs(weekStart, weekEnd);
+  const { logs, loading: logsLoading, upsertLog } = useDateRangeLogs(weekStart, weekEnd);
   const { activities: weekActivities, loading: activitiesLoading, addActivity, deleteActivity, updateDuration } = useDateRangeActivities(weekStart, weekEnd);
 
   // Default to current phase once loaded
@@ -551,6 +562,86 @@ export default function PlanPage() {
                         </div>
                       ))}
 
+                      {/* Planned session + status/feeling/notes */}
+                      {!outOfRange && session && session.type !== "rest" && (
+                        <div style={{ padding: "10px 16px 12px", borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
+                          {/* Planned session row */}
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                            <Icon name={resolveIconName(session.icon)} size={16} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
+                                {hasCustom ? log!.custom_session_title : session.title}
+                              </span>
+                              <span style={{ fontSize: "11px", color: "var(--text-secondary)", marginLeft: "8px" }}>
+                                {hasCustom ? log!.custom_session_duration : session.duration}
+                              </span>
+                            </div>
+                          </div>
+                          {/* Status chips */}
+                          <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginBottom: (log?.status && log.status !== "planned") ? "8px" : 0 }}>
+                            {SESSION_STATUSES.filter((s) => s !== "planned").map((status) => {
+                              const active = log?.status === status;
+                              return (
+                                <button
+                                  key={status}
+                                  onClick={() => upsertLog(dateStr, { status: status as SessionStatus })}
+                                  style={{
+                                    padding: "5px 10px", borderRadius: "var(--radius-pill)",
+                                    fontSize: "12px", fontWeight: 600,
+                                    border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                    backgroundColor: active ? "var(--text-primary)" : "#fff",
+                                    color: active ? "#fff" : "var(--text-primary)",
+                                    cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                                  }}
+                                >
+                                  {STATUS_LABELS[status]}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {/* Feeling icons (if completed/modified) */}
+                          {(log?.status === "completed" || log?.status === "modified") && (
+                            <div style={{ display: "flex", gap: "5px", marginBottom: "8px" }}>
+                              {FEELINGS.map((f) => {
+                                const active = log?.feeling === f.value;
+                                return (
+                                  <button
+                                    key={f.value}
+                                    onClick={() => upsertLog(dateStr, { feeling: f.value as Feeling })}
+                                    style={{
+                                      flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px",
+                                      padding: "6px 2px", borderRadius: "var(--radius-sm)",
+                                      border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.08)",
+                                      backgroundColor: active ? "rgba(26,26,26,0.06)" : "#fff",
+                                      cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                                    }}
+                                  >
+                                    <Icon name={f.icon} size={18} />
+                                    <span style={{ fontSize: "9px", fontWeight: 500, color: "var(--text-secondary)" }}>{f.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {/* Notes (if status is set) */}
+                          {log?.status && log.status !== "planned" && (
+                            <textarea
+                              placeholder="Notes..."
+                              value={log?.notes ?? ""}
+                              onChange={(e) => upsertLog(dateStr, { notes: e.target.value })}
+                              rows={2}
+                              style={{
+                                width: "100%", padding: "8px 10px",
+                                borderRadius: "var(--radius-sm)",
+                                backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)",
+                                fontSize: "12px", color: "var(--text-primary)",
+                                outline: "none", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+                              }}
+                            />
+                          )}
+                        </div>
+                      )}
+
                       {/* Activity type buttons + form */}
                       {!outOfRange && (() => {
                         const openKey = editingActKey?.startsWith(dateStr + ":") ? editingActKey.split(":")[1] as ActivityType : null;
@@ -637,15 +728,70 @@ export default function PlanPage() {
                                   </div>
                                 )}
 
+                                {/* Tournament fields */}
+                                {openKey === "tournament" && (
+                                  <>
+                                    <div>
+                                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Tournament Name</p>
+                                      <input
+                                        type="text" placeholder="e.g. Copa Padel Madrid"
+                                        value={actDetails.title}
+                                        onChange={(e) => setActDetails((d) => ({ ...d, title: e.target.value }))}
+                                        style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Level</p>
+                                      <input
+                                        type="text" placeholder="e.g. P1000, Open, WPT"
+                                        value={actDetails.tournamentLevel}
+                                        onChange={(e) => setActDetails((d) => ({ ...d, tournamentLevel: e.target.value }))}
+                                        style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Location</p>
+                                      <input
+                                        type="text" placeholder="e.g. Madrid, Spain"
+                                        value={actDetails.tournamentLocation}
+                                        onChange={(e) => setActDetails((d) => ({ ...d, tournamentLocation: e.target.value }))}
+                                        style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Stage</p>
+                                      <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                                        {TOURNAMENT_STAGES.map((stage) => {
+                                          const active = actDetails.tournamentStage === stage;
+                                          return (
+                                            <button key={stage} onClick={() => setActDetails((d) => ({ ...d, tournamentStage: active ? "" : stage }))} style={{
+                                              padding: "4px 10px", borderRadius: "var(--radius-pill)", fontSize: "12px", fontWeight: 500,
+                                              border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                              backgroundColor: active ? "var(--text-primary)" : "#fff",
+                                              color: active ? "#fff" : "var(--text-primary)",
+                                              cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                                            }}>{stage}</button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+
                                 {/* Save / Cancel */}
                                 <div style={{ display: "flex", gap: "8px", marginTop: "2px" }}>
                                   <button
                                     onClick={() => {
                                       const label = ACTIVITY_TYPES.find((a) => a.type === openKey)?.label ?? openKey;
+                                      const isTournament = openKey === "tournament";
+                                      const tournamentComment = isTournament
+                                        ? [actDetails.tournamentStage, actDetails.tournamentLocation].filter(Boolean).join(" · ") || null
+                                        : null;
                                       addActivity(dateStr, {
                                         description: actDetails.title.trim() || label,
                                         session_type: openKey,
-                                        focus: actDetails.focus || undefined,
+                                        focus: isTournament ? (actDetails.tournamentLevel || undefined) : (actDetails.focus || undefined),
+                                        comment: tournamentComment,
                                         duration_minutes: parseDurationToMinutes(actDetails.duration) || null,
                                       });
                                       setEditingActKey(null);
