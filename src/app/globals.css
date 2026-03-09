@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --bg-body: #F2EFE9;
+  --bg-card-yellow: #EBF55F;
+  --bg-card-peach: #FF9F69;
+  --bg-glass: rgba(255, 255, 255, 0.4);
+  --bg-glass-border: rgba(255, 255, 255, 0.6);
+
+  --text-primary: #1A1A1A;
+  --text-secondary: #5E5C58;
+
+  --radius-lg: 32px;
+  --radius-md: 20px;
+  --radius-sm: 12px;
+  --radius-pill: 999px;
+
+  --space-xs: 8px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+}
+
+@theme inline {
+  --color-background: var(--bg-body);
+  --color-foreground: var(--text-primary);
+  --font-sans: var(--font-dm-sans);
+  --font-heading: var(--font-outfit);
+}
+
+* {
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--bg-body);
+  color: var(--text-primary);
+  font-family: var(--font-dm-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-outfit), sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+.glass-panel {
+  background: var(--bg-glass);
+  border: 1px solid var(--bg-glass-border);
+  backdrop-filter: blur(20px);
+  border-radius: var(--radius-md);
+}
+
+.pattern-dots {
+  background-image: radial-gradient(var(--text-primary) 1.5px, transparent 1.5px);
+  background-size: 12px 12px;
+  opacity: 0.15;
+}
+
+.pattern-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--text-primary),
+    var(--text-primary) 1px,
+    transparent 1px,
+    transparent 6px
+  );
+  opacity: 0.1;
+}
