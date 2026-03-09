@@ -36,7 +36,7 @@ const ACTIVITY_TYPES = [
   { type: "recovery", label: "Recovery" },
 ] as const;
 type ActivityType = typeof ACTIVITY_TYPES[number]["type"];
-const emptyActDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "" };
+const emptyActDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "", result: "" };
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "Planned",
@@ -46,6 +46,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const TOURNAMENT_STAGES = ["Groups", "Round of 16", "Quarter Finals", "Semi Finals", "Final", "Consolation"] as const;
+const TOURNAMENT_LEVELS = ["Low Bronze", "High Bronze", "High Bronze / Low Silver", "Low Silver", "High Silver", "Low Gold", "High Gold", "Advanced", "Open", "P25", "P100", "P200", "P500", "P1000", "WPT"] as const;
 
 type ViewMode = "overview" | "template" | "dayByDay";
 
@@ -61,6 +62,14 @@ function formatShortDate(dateStr: string): string {
 function getDayAbbrev(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   return DAY_ABBREVS_FULL[d.getDay() === 0 ? 6 : d.getDay() - 1];
+}
+
+function minutesToDurationStr(minutes: number | null): string {
+  if (!minutes) return "";
+  for (const d of SESSION_DURATIONS) {
+    if (parseDurationToMinutes(d) === minutes) return d;
+  }
+  return "";
 }
 
 const cardStyle: React.CSSProperties = {
@@ -107,13 +116,17 @@ export default function PlanPage() {
   const [editingActKey, setEditingActKey] = useState<string | null>(null); // "date:type"
   const [actDetails, setActDetails] = useState(emptyActDetails);
 
+  // Per-activity editing
+  const [editingActivityId, setEditingActivityId] = useState<string | null>(null);
+  const [editActDetails, setEditActDetails] = useState(emptyActDetails);
+
   // Week navigation for day-by-day view
   const today = getDateStr();
   const [weekStart, setWeekStart] = useState(() => getWeekStart(today));
 
   const weekEnd = addDays(weekStart, 6);
   const { logs, loading: logsLoading, upsertLog } = useDateRangeLogs(weekStart, weekEnd);
-  const { activities: weekActivities, loading: activitiesLoading, addActivity, deleteActivity, updateDuration } = useDateRangeActivities(weekStart, weekEnd);
+  const { activities: weekActivities, loading: activitiesLoading, addActivity, deleteActivity, updateDuration, updateActivity } = useDateRangeActivities(weekStart, weekEnd);
 
   // Default to current phase once loaded
   useEffect(() => {
@@ -529,118 +542,213 @@ export default function PlanPage() {
                     {/* Items list */}
                     <div style={{ backgroundColor: "#fff" }}>
                       {/* Logged activities */}
-                      {dayActivities.map((a) => (
-                        <div
-                          key={a.id}
-                          style={{
-                            display: "flex", alignItems: "flex-start",
-                            padding: "10px 16px", gap: "10px",
-                            borderBottom: "1px solid rgba(0,0,0,0.04)",
-                          }}
-                        >
-                          <div style={{ paddingTop: "2px" }}>
-                            <Icon name={SESSION_TYPE_ICONS[a.session_type ?? ""] ?? "target"} size={16} />
-                          </div>
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", display: "block" }}>{a.description}</span>
-                            <div style={{ display: "flex", gap: "8px", marginTop: "2px", flexWrap: "wrap" }}>
-                              {a.duration_minutes != null && (
-                                <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{formatMinutes(a.duration_minutes)}</span>
-                              )}
-                              {a.focus && <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{a.focus}</span>}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => deleteActivity(dateStr, a.id)}
-                            style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", color: "var(--text-secondary)", display: "flex", alignItems: "center", flexShrink: 0 }}
-                            aria-label="Delete"
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M18 6L6 18M6 6l12 12" />
-                            </svg>
-                          </button>
-                        </div>
-                      ))}
-
-                      {/* Planned session + status/feeling/notes */}
-                      {!outOfRange && session && session.type !== "rest" && (
-                        <div style={{ padding: "10px 16px 12px", borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
-                          {/* Planned session row */}
-                          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                            <Icon name={resolveIconName(session.icon)} size={16} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>
-                                {hasCustom ? log!.custom_session_title : session.title}
-                              </span>
-                              <span style={{ fontSize: "11px", color: "var(--text-secondary)", marginLeft: "8px" }}>
-                                {hasCustom ? log!.custom_session_duration : session.duration}
-                              </span>
-                            </div>
-                          </div>
-                          {/* Status chips */}
-                          <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginBottom: (log?.status && log.status !== "planned") ? "8px" : 0 }}>
-                            {SESSION_STATUSES.filter((s) => s !== "planned").map((status) => {
-                              const active = log?.status === status;
-                              return (
+                      {dayActivities.map((a) => {
+                        const isEditingThis = editingActivityId === a.id;
+                        const actType = a.session_type as ActivityType | null;
+                        return (
+                          <div key={a.id} style={{ borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
+                            {/* Activity row */}
+                            <div style={{ display: "flex", alignItems: "flex-start", padding: "10px 16px", gap: "10px" }}>
+                              <div style={{ paddingTop: "2px" }}>
+                                <Icon name={SESSION_TYPE_ICONS[a.session_type ?? ""] ?? "target"} size={16} />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)", display: "block" }}>{a.description}</span>
+                                <div style={{ display: "flex", gap: "8px", marginTop: "2px", flexWrap: "wrap" }}>
+                                  {a.duration_minutes != null && (
+                                    <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{formatMinutes(a.duration_minutes)}</span>
+                                  )}
+                                  {a.focus && <span style={{ fontSize: "11px", color: "var(--text-secondary)" }}>{a.focus}</span>}
+                                  {a.comment && <span style={{ fontSize: "11px", color: "var(--text-secondary)", fontStyle: "italic" }}>{a.comment}</span>}
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", gap: "4px", alignItems: "center", flexShrink: 0 }}>
                                 <button
-                                  key={status}
-                                  onClick={() => upsertLog(dateStr, { status: status as SessionStatus })}
-                                  style={{
-                                    padding: "5px 10px", borderRadius: "var(--radius-pill)",
-                                    fontSize: "12px", fontWeight: 600,
-                                    border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
-                                    backgroundColor: active ? "var(--text-primary)" : "#fff",
-                                    color: active ? "#fff" : "var(--text-primary)",
-                                    cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                                  onClick={() => {
+                                    if (isEditingThis) {
+                                      setEditingActivityId(null);
+                                    } else {
+                                      setEditingActivityId(a.id);
+                                      const existingResult = a.comment?.startsWith("Win") ? "Win" : a.comment?.startsWith("Loss") ? "Loss" : "";
+                                      const isTournament = a.session_type === "tournament";
+                                      const commentParts = a.comment?.split(" · ") ?? [];
+                                      const hasResult = ["Win", "Loss"].includes(commentParts[0] ?? "");
+                                      const remainingParts = hasResult ? commentParts.slice(1) : commentParts;
+                                      let stage = "";
+                                      let location = "";
+                                      if (isTournament) {
+                                        stage = TOURNAMENT_STAGES.find((s) => remainingParts.includes(s)) ?? "";
+                                        location = remainingParts.filter((p) => p !== stage).join(" · ");
+                                      }
+                                      setEditActDetails({
+                                        ...emptyActDetails,
+                                        title: a.description,
+                                        duration: minutesToDurationStr(a.duration_minutes),
+                                        focus: isTournament ? "" : (a.focus ?? ""),
+                                        notes: isTournament ? "" : (a.comment ?? ""),
+                                        result: existingResult,
+                                        tournamentLevel: isTournament ? (a.focus ?? "") : "",
+                                        tournamentStage: stage,
+                                        tournamentLocation: location,
+                                      });
+                                    }
                                   }}
+                                  style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", color: "var(--text-secondary)", display: "flex", alignItems: "center", opacity: 0.5 }}
+                                  aria-label="Edit"
                                 >
-                                  {STATUS_LABELS[status]}
+                                  <PencilIcon size={13} />
                                 </button>
-                              );
-                            })}
-                          </div>
-                          {/* Feeling icons (if completed/modified) */}
-                          {(log?.status === "completed" || log?.status === "modified") && (
-                            <div style={{ display: "flex", gap: "5px", marginBottom: "8px" }}>
-                              {FEELINGS.map((f) => {
-                                const active = log?.feeling === f.value;
-                                return (
-                                  <button
-                                    key={f.value}
-                                    onClick={() => upsertLog(dateStr, { feeling: f.value as Feeling })}
-                                    style={{
-                                      flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px",
-                                      padding: "6px 2px", borderRadius: "var(--radius-sm)",
-                                      border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.08)",
-                                      backgroundColor: active ? "rgba(26,26,26,0.06)" : "#fff",
-                                      cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
-                                    }}
-                                  >
-                                    <Icon name={f.icon} size={18} />
-                                    <span style={{ fontSize: "9px", fontWeight: 500, color: "var(--text-secondary)" }}>{f.label}</span>
-                                  </button>
-                                );
-                              })}
+                                <button
+                                  onClick={() => { if (isEditingThis) setEditingActivityId(null); deleteActivity(dateStr, a.id); }}
+                                  style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", color: "var(--text-secondary)", display: "flex", alignItems: "center", opacity: 0.5 }}
+                                  aria-label="Delete"
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M18 6L6 18M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
                             </div>
-                          )}
-                          {/* Notes (if status is set) */}
-                          {log?.status && log.status !== "planned" && (
-                            <textarea
-                              placeholder="Notes..."
-                              value={log?.notes ?? ""}
-                              onChange={(e) => upsertLog(dateStr, { notes: e.target.value })}
-                              rows={2}
-                              style={{
-                                width: "100%", padding: "8px 10px",
-                                borderRadius: "var(--radius-sm)",
-                                backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)",
-                                fontSize: "12px", color: "var(--text-primary)",
-                                outline: "none", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
-                              }}
-                            />
-                          )}
-                        </div>
-                      )}
+
+                            {/* Inline edit form */}
+                            {isEditingThis && (
+                              <div style={{ padding: "10px 16px 14px", backgroundColor: "rgba(0,0,0,0.015)", borderTop: "1px solid rgba(0,0,0,0.06)", display: "flex", flexDirection: "column", gap: "10px" }}>
+                                {/* Title */}
+                                <div>
+                                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                    {actType === "tournament" ? "Tournament Name" : "Title"}
+                                  </p>
+                                  <input type="text" value={editActDetails.title} onChange={(e) => setEditActDetails((d) => ({ ...d, title: e.target.value }))}
+                                    style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+                                  />
+                                </div>
+                                {/* Duration */}
+                                <div>
+                                  <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Duration</p>
+                                  <select value={editActDetails.duration} onChange={(e) => setEditActDetails((d) => ({ ...d, duration: e.target.value }))}
+                                    style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", appearance: "none" }}>
+                                    <option value="">Select duration</option>
+                                    {SESSION_DURATIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                                  </select>
+                                </div>
+                                {/* Focus for coach/drilling/match */}
+                                {(actType === "coach" || actType === "drilling" || actType === "match") && (
+                                  <div>
+                                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Focus</p>
+                                    <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                                      {SESSION_FOCUSES.map((f) => {
+                                        const sel = editActDetails.focus.split(", ").filter(Boolean);
+                                        const isActive = sel.includes(f);
+                                        return (
+                                          <button key={f} onClick={() => {
+                                            const next = isActive ? sel.filter((s) => s !== f) : [...sel, f];
+                                            setEditActDetails((d) => ({ ...d, focus: next.join(", ") }));
+                                          }} style={{
+                                            padding: "4px 10px", borderRadius: "var(--radius-pill)", fontSize: "12px", fontWeight: 500,
+                                            border: isActive ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                            backgroundColor: isActive ? "var(--text-primary)" : "#fff",
+                                            color: isActive ? "#fff" : "var(--text-primary)",
+                                            cursor: "pointer", fontFamily: "inherit",
+                                          }}>{f}</button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Result for match/tournament */}
+                                {(actType === "match" || actType === "tournament") && (
+                                  <div>
+                                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Result</p>
+                                    <div style={{ display: "flex", gap: "5px" }}>
+                                      {["Win", "Loss"].map((r) => {
+                                        const active = editActDetails.result === r;
+                                        return (
+                                          <button key={r} onClick={() => setEditActDetails((d) => ({ ...d, result: active ? "" : r }))} style={{
+                                            padding: "5px 16px", borderRadius: "var(--radius-pill)", fontSize: "12px", fontWeight: 600,
+                                            border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                            backgroundColor: active ? (r === "Win" ? "#1a7f37" : "#cf222e") : "#fff",
+                                            color: active ? "#fff" : "var(--text-primary)",
+                                            cursor: "pointer", fontFamily: "inherit",
+                                          }}>{r}</button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Tournament fields */}
+                                {actType === "tournament" && (
+                                  <>
+                                    <div>
+                                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Level</p>
+                                      <select value={editActDetails.tournamentLevel} onChange={(e) => setEditActDetails((d) => ({ ...d, tournamentLevel: e.target.value }))}
+                                        style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", appearance: "none", boxSizing: "border-box" }}>
+                                        <option value="">Select level</option>
+                                        {TOURNAMENT_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                                      </select>
+                                    </div>
+                                    <div>
+                                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Location</p>
+                                      <input type="text" placeholder="e.g. Madrid, Spain" value={editActDetails.tournamentLocation} onChange={(e) => setEditActDetails((d) => ({ ...d, tournamentLocation: e.target.value }))}
+                                        style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }} />
+                                    </div>
+                                    <div>
+                                      <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Stage</p>
+                                      <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                                        {TOURNAMENT_STAGES.map((stage) => {
+                                          const active = editActDetails.tournamentStage === stage;
+                                          return (
+                                            <button key={stage} onClick={() => setEditActDetails((d) => ({ ...d, tournamentStage: active ? "" : stage }))} style={{
+                                              padding: "4px 10px", borderRadius: "var(--radius-pill)", fontSize: "12px", fontWeight: 500,
+                                              border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                              backgroundColor: active ? "var(--text-primary)" : "#fff",
+                                              color: active ? "#fff" : "var(--text-primary)",
+                                              cursor: "pointer", fontFamily: "inherit",
+                                            }}>{stage}</button>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </>
+                                )}
+                                {/* Notes for non-tournament */}
+                                {actType !== "tournament" && (
+                                  <div>
+                                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Notes</p>
+                                    <textarea value={editActDetails.notes} onChange={(e) => setEditActDetails((d) => ({ ...d, notes: e.target.value }))} rows={2}
+                                      style={{ width: "100%", padding: "8px 10px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "12px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box" }} />
+                                  </div>
+                                )}
+                                {/* Save / Cancel */}
+                                <div style={{ display: "flex", gap: "8px" }}>
+                                  <button
+                                    onClick={() => {
+                                      const isTournament = actType === "tournament";
+                                      const isMatch = actType === "match";
+                                      const comment = isTournament
+                                        ? [editActDetails.result, editActDetails.tournamentStage, editActDetails.tournamentLocation].filter(Boolean).join(" · ") || null
+                                        : isMatch
+                                        ? [editActDetails.result, editActDetails.notes.trim()].filter(Boolean).join(" · ") || null
+                                        : (editActDetails.notes.trim() || null);
+                                      updateActivity(a.id, {
+                                        description: editActDetails.title.trim() || a.description,
+                                        focus: isTournament ? (editActDetails.tournamentLevel || null) : (editActDetails.focus || null),
+                                        comment,
+                                        duration_minutes: parseDurationToMinutes(editActDetails.duration) || null,
+                                      });
+                                      setEditingActivityId(null);
+                                    }}
+                                    style={{ flex: 1, padding: "8px", borderRadius: "var(--radius-pill)", backgroundColor: "var(--text-primary)", color: "#fff", fontSize: "13px", fontWeight: 600, border: "none", cursor: "pointer", fontFamily: "inherit" }}
+                                  >Save</button>
+                                  <button
+                                    onClick={() => setEditingActivityId(null)}
+                                    style={{ padding: "8px 16px", borderRadius: "var(--radius-pill)", backgroundColor: "#fff", color: "var(--text-secondary)", fontSize: "13px", fontWeight: 500, border: "1px solid rgba(0,0,0,0.1)", cursor: "pointer", fontFamily: "inherit" }}
+                                  >Cancel</button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
 
                       {/* Activity type buttons + form */}
                       {!outOfRange && (() => {
@@ -728,6 +836,27 @@ export default function PlanPage() {
                                   </div>
                                 )}
 
+                                {/* Win/Loss for match and tournament */}
+                                {(openKey === "match" || openKey === "tournament") && (
+                                  <div>
+                                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Result</p>
+                                    <div style={{ display: "flex", gap: "5px" }}>
+                                      {["Win", "Loss"].map((r) => {
+                                        const active = actDetails.result === r;
+                                        return (
+                                          <button key={r} onClick={() => setActDetails((d) => ({ ...d, result: active ? "" : r }))} style={{
+                                            padding: "5px 16px", borderRadius: "var(--radius-pill)", fontSize: "12px", fontWeight: 600,
+                                            border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                            backgroundColor: active ? (r === "Win" ? "#1a7f37" : "#cf222e") : "#fff",
+                                            color: active ? "#fff" : "var(--text-primary)",
+                                            cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                                          }}>{r}</button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Tournament fields */}
                                 {openKey === "tournament" && (
                                   <>
@@ -742,12 +871,14 @@ export default function PlanPage() {
                                     </div>
                                     <div>
                                       <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Level</p>
-                                      <input
-                                        type="text" placeholder="e.g. P1000, Open, WPT"
+                                      <select
                                         value={actDetails.tournamentLevel}
                                         onChange={(e) => setActDetails((d) => ({ ...d, tournamentLevel: e.target.value }))}
-                                        style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
-                                      />
+                                        style={{ width: "100%", padding: "8px 12px", borderRadius: "var(--radius-sm)", backgroundColor: "#fff", border: "1px solid rgba(0,0,0,0.08)", fontSize: "13px", color: "var(--text-primary)", outline: "none", fontFamily: "inherit", appearance: "none", boxSizing: "border-box" }}
+                                      >
+                                        <option value="">Select level</option>
+                                        {TOURNAMENT_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
+                                      </select>
                                     </div>
                                     <div>
                                       <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Location</p>
@@ -784,14 +915,17 @@ export default function PlanPage() {
                                     onClick={() => {
                                       const label = ACTIVITY_TYPES.find((a) => a.type === openKey)?.label ?? openKey;
                                       const isTournament = openKey === "tournament";
-                                      const tournamentComment = isTournament
-                                        ? [actDetails.tournamentStage, actDetails.tournamentLocation].filter(Boolean).join(" · ") || null
+                                      const isMatch = openKey === "match";
+                                      const comment = isTournament
+                                        ? [actDetails.result, actDetails.tournamentStage, actDetails.tournamentLocation].filter(Boolean).join(" · ") || null
+                                        : isMatch
+                                        ? [actDetails.result, actDetails.notes.trim()].filter(Boolean).join(" · ") || null
                                         : null;
                                       addActivity(dateStr, {
                                         description: actDetails.title.trim() || label,
                                         session_type: openKey,
                                         focus: isTournament ? (actDetails.tournamentLevel || undefined) : (actDetails.focus || undefined),
-                                        comment: tournamentComment,
+                                        comment,
                                         duration_minutes: parseDurationToMinutes(actDetails.duration) || null,
                                       });
                                       setEditingActKey(null);

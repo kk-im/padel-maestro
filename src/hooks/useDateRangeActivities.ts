@@ -177,5 +177,30 @@ export function useDateRangeActivities(startDate: string, endDate: string) {
     );
   }, []);
 
-  return { activities, loading, addActivity, deleteActivity, updateDuration };
+  const updateActivity = useCallback((id: string, fields: { description?: string; session_type?: string | null; focus?: string | null; comment?: string | null; duration_minutes?: number | null; cost_usd?: number | null }) => {
+    setActivities((prev) => {
+      const next = new Map(prev);
+      for (const [date, list] of next) {
+        const idx = list.findIndex((a) => a.id === id);
+        if (idx >= 0) {
+          const updated = [...list];
+          updated[idx] = { ...updated[idx], ...fields };
+          next.set(date, updated);
+          break;
+        }
+      }
+      return next;
+    });
+
+    const supabase = createClient();
+    supabase
+      .from("daily_activities")
+      .update(fields)
+      .eq("id", id)
+      .then(({ error }) => {
+        if (error) console.error("Failed to update activity:", error);
+      });
+  }, []);
+
+  return { activities, loading, addActivity, deleteActivity, updateDuration, updateActivity };
 }
