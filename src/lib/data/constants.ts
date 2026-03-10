@@ -6,6 +6,7 @@ export const SESSION_TYPES = [
   "rest",
   "drilling",
   "tournament",
+  "americano",
 ] as const;
 
 export const SESSION_STATUSES = [
@@ -106,6 +107,7 @@ export const SESSION_TYPE_ICONS: Record<string, string> = {
   rest: "sleep",
   drilling: "shuttlecock",
   tournament: "medal",
+  americano: "users",
 };
 
 export const SESSION_DURATIONS = [

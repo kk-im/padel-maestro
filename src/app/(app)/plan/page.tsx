@@ -31,12 +31,13 @@ const ACTIVITY_TYPES = [
   { type: "coach", label: "Coach Session" },
   { type: "match", label: "Game" },
   { type: "tournament", label: "Tournament" },
+  { type: "americano", label: "Americano" },
   { type: "gym", label: "Gym" },
   { type: "drilling", label: "Drilling" },
   { type: "recovery", label: "Recovery" },
 ] as const;
 type ActivityType = typeof ACTIVITY_TYPES[number]["type"];
-const emptyActDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "", result: "" };
+const emptyActDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "", result: "", placement: "" };
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "Planned",
@@ -47,6 +48,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const TOURNAMENT_STAGES = ["Groups", "Round of 16", "Quarter Finals", "Semi Finals", "Final", "Consolation"] as const;
 const TOURNAMENT_LEVELS = ["Low Bronze", "High Bronze", "High Bronze / Low Silver", "Low Silver", "High Silver", "Low Gold", "High Gold", "Advanced", "Open", "P25", "P100", "P200", "P500", "P1000", "WPT"] as const;
+const AMERICANO_PLACEMENTS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"] as const;
 
 type ViewMode = "overview" | "template" | "dayByDay";
 
@@ -569,27 +571,33 @@ export default function PlanPage() {
                                       setEditingActivityId(null);
                                     } else {
                                       setEditingActivityId(a.id);
-                                      const existingResult = a.comment?.startsWith("Win") ? "Win" : a.comment?.startsWith("Loss") ? "Loss" : "";
                                       const isTournament = a.session_type === "tournament";
+                                      const isAmericano = a.session_type === "americano";
                                       const commentParts = a.comment?.split(" · ") ?? [];
-                                      const hasResult = ["Win", "Loss"].includes(commentParts[0] ?? "");
+                                      const existingResult = ["Win", "Loss"].includes(commentParts[0] ?? "") ? commentParts[0] : "";
+                                      const hasResult = !!existingResult;
                                       const remainingParts = hasResult ? commentParts.slice(1) : commentParts;
                                       let stage = "";
                                       let location = "";
+                                      let placement = "";
                                       if (isTournament) {
                                         stage = TOURNAMENT_STAGES.find((s) => remainingParts.includes(s)) ?? "";
                                         location = remainingParts.filter((p) => p !== stage).join(" · ");
+                                      }
+                                      if (isAmericano) {
+                                        placement = AMERICANO_PLACEMENTS.find((p) => commentParts[0] === p) ?? "";
                                       }
                                       setEditActDetails({
                                         ...emptyActDetails,
                                         title: a.description,
                                         duration: minutesToDurationStr(a.duration_minutes),
                                         focus: isTournament ? "" : (a.focus ?? ""),
-                                        notes: isTournament ? "" : (a.comment ?? ""),
+                                        notes: (isTournament || isAmericano) ? "" : (a.comment ?? ""),
                                         result: existingResult,
                                         tournamentLevel: isTournament ? (a.focus ?? "") : "",
                                         tournamentStage: stage,
                                         tournamentLocation: location,
+                                        placement,
                                       });
                                     }
                                   }}
@@ -710,8 +718,28 @@ export default function PlanPage() {
                                     </div>
                                   </>
                                 )}
-                                {/* Notes for non-tournament */}
-                                {actType !== "tournament" && (
+                                {/* Americano placement (edit) */}
+                                {actType === "americano" && (
+                                  <div>
+                                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Place</p>
+                                    <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                                      {AMERICANO_PLACEMENTS.map((p) => {
+                                        const active = editActDetails.placement === p;
+                                        return (
+                                          <button key={p} onClick={() => setEditActDetails((d) => ({ ...d, placement: active ? "" : p }))} style={{
+                                            padding: "4px 12px", borderRadius: "var(--radius-pill)", fontSize: "12px", fontWeight: 600,
+                                            border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                            backgroundColor: active ? "var(--text-primary)" : "#fff",
+                                            color: active ? "#fff" : "var(--text-primary)",
+                                            cursor: "pointer", fontFamily: "inherit",
+                                          }}>{p}</button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                                {/* Notes for non-tournament, non-americano */}
+                                {actType !== "tournament" && actType !== "americano" && (
                                   <div>
                                     <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Notes</p>
                                     <textarea value={editActDetails.notes} onChange={(e) => setEditActDetails((d) => ({ ...d, notes: e.target.value }))} rows={2}
@@ -724,10 +752,13 @@ export default function PlanPage() {
                                     onClick={() => {
                                       const isTournament = actType === "tournament";
                                       const isMatch = actType === "match";
+                                      const isAmericanoEdit = actType === "americano";
                                       const comment = isTournament
                                         ? [editActDetails.result, editActDetails.tournamentStage, editActDetails.tournamentLocation].filter(Boolean).join(" · ") || null
                                         : isMatch
                                         ? [editActDetails.result, editActDetails.notes.trim()].filter(Boolean).join(" · ") || null
+                                        : isAmericanoEdit
+                                        ? [editActDetails.placement, editActDetails.notes.trim()].filter(Boolean).join(" · ") || null
                                         : (editActDetails.notes.trim() || null);
                                       updateActivity(a.id, {
                                         description: editActDetails.title.trim() || a.description,
@@ -857,6 +888,27 @@ export default function PlanPage() {
                                   </div>
                                 )}
 
+                                {/* Americano placement */}
+                                {openKey === "americano" && (
+                                  <div>
+                                    <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Place</p>
+                                    <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+                                      {AMERICANO_PLACEMENTS.map((p) => {
+                                        const active = actDetails.placement === p;
+                                        return (
+                                          <button key={p} onClick={() => setActDetails((d) => ({ ...d, placement: active ? "" : p }))} style={{
+                                            padding: "4px 12px", borderRadius: "var(--radius-pill)", fontSize: "12px", fontWeight: 600,
+                                            border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                                            backgroundColor: active ? "var(--text-primary)" : "#fff",
+                                            color: active ? "#fff" : "var(--text-primary)",
+                                            cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                                          }}>{p}</button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Tournament fields */}
                                 {openKey === "tournament" && (
                                   <>
@@ -916,10 +968,13 @@ export default function PlanPage() {
                                       const label = ACTIVITY_TYPES.find((a) => a.type === openKey)?.label ?? openKey;
                                       const isTournament = openKey === "tournament";
                                       const isMatch = openKey === "match";
+                                      const isAmericano = openKey === "americano";
                                       const comment = isTournament
                                         ? [actDetails.result, actDetails.tournamentStage, actDetails.tournamentLocation].filter(Boolean).join(" · ") || null
                                         : isMatch
                                         ? [actDetails.result, actDetails.notes.trim()].filter(Boolean).join(" · ") || null
+                                        : isAmericano
+                                        ? [actDetails.placement, actDetails.notes.trim()].filter(Boolean).join(" · ") || null
                                         : null;
                                       addActivity(dateStr, {
                                         description: actDetails.title.trim() || label,

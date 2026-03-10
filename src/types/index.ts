@@ -1,6 +1,6 @@
 // --- Session & feeling enums ---
 
-export type SessionType = "coach" | "gym" | "match" | "recovery" | "rest" | "drilling" | "tournament";
+export type SessionType = "coach" | "gym" | "match" | "recovery" | "rest" | "drilling" | "tournament" | "americano";
 export type SessionStatus = "planned" | "completed" | "modified" | "skipped";
 export type Feeling = "great" | "good" | "okay" | "tired" | "pain";
 

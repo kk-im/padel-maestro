@@ -24,6 +24,7 @@ const ACTIVITY_TYPES = [
   { type: "coach", label: "Coach Session" },
   { type: "match", label: "Game" },
   { type: "tournament", label: "Tournament" },
+  { type: "americano", label: "Americano" },
   { type: "gym", label: "Gym" },
   { type: "drilling", label: "Drilling" },
   { type: "recovery", label: "Recovery" },
@@ -31,10 +32,11 @@ const ACTIVITY_TYPES = [
 
 type ActivityType = typeof ACTIVITY_TYPES[number]["type"];
 
-const emptyDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "", result: "" };
+const emptyDetails = { title: "", duration: "", focus: "", notes: "", costAmount: "", costCurrency: "USD" as CurrencyCode, tournamentLevel: "", tournamentLocation: "", tournamentStage: "", result: "", placement: "" };
 
 const TOURNAMENT_STAGES = ["Groups", "Round of 16", "Quarter Finals", "Semi Finals", "Final", "Consolation"] as const;
 const TOURNAMENT_LEVELS = ["Low Bronze", "High Bronze", "High Bronze / Low Silver", "Low Silver", "High Silver", "Low Gold", "High Gold", "Advanced", "Open", "P25", "P100", "P200", "P500", "P1000", "WPT"] as const;
+const AMERICANO_PLACEMENTS = ["1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th"] as const;
 
 const cardStyle: React.CSSProperties = {
   background: "var(--bg-glass)",
@@ -166,10 +168,13 @@ export default function TodayPage() {
     const costUsd = !isNaN(parsedCost) && parsedCost > 0 ? toUSD(parsedCost, actDetails.costCurrency) : null;
     const isTournament = activeType === "tournament";
     const isMatch = activeType === "match";
+    const isAmericano = activeType === "americano";
     const comment = isTournament
       ? [actDetails.result, actDetails.tournamentStage, actDetails.tournamentLocation].filter(Boolean).join(" · ") || null
       : isMatch
       ? [actDetails.result, actDetails.notes.trim()].filter(Boolean).join(" · ") || null
+      : isAmericano
+      ? [actDetails.placement, actDetails.notes.trim()].filter(Boolean).join(" · ") || null
       : (actDetails.notes.trim() || null);
     addActivity({
       description: actDetails.title.trim() || label,
@@ -827,6 +832,32 @@ export default function TodayPage() {
                     </div>
                   </div>
                 </>
+              )}
+              {/* Americano-specific fields */}
+              {activeType === "americano" && (
+                <div>
+                  <p style={fieldLabelStyle}>Place</p>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    {AMERICANO_PLACEMENTS.map((p) => {
+                      const active = actDetails.placement === p;
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => setActDetails((d) => ({ ...d, placement: active ? "" : p }))}
+                          style={{
+                            padding: "6px 14px", borderRadius: "var(--radius-pill)", fontSize: "13px", fontWeight: 600,
+                            border: active ? "2px solid var(--text-primary)" : "1px solid rgba(0,0,0,0.1)",
+                            backgroundColor: active ? "var(--text-primary)" : "#fff",
+                            color: active ? "#fff" : "var(--text-primary)",
+                            cursor: "pointer", transition: "all 0.15s ease", fontFamily: "inherit",
+                          }}
+                        >
+                          {p}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
               <div>
                 <p style={fieldLabelStyle}>Notes</p>

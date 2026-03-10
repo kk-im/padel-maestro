@@ -146,20 +146,36 @@ export default function ProfilePage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "16px" }}>
         <div style={statCardStyle}>
           <span style={{ fontSize: "28px", fontWeight: 700 }}>{stats.sessionsCompleted}</span>
-          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>Sessions Done</span>
+          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>Sessions</span>
         </div>
         <div style={statCardStyle}>
           <span style={{ fontSize: "28px", fontWeight: 700 }}>{stats.matchesPlayed}</span>
-          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>Matches Played</span>
+          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>Matches</span>
         </div>
         <div style={statCardStyle}>
-          <span style={{ fontSize: "28px", fontWeight: 700 }}>{stats.avgSkillRating ?? "—"}</span>
-          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>Avg Skill Rating</span>
+          <span style={{ fontSize: "28px", fontWeight: 700 }}>{stats.tournamentsPlayed}</span>
+          <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>Tournaments</span>
         </div>
         <div style={statCardStyle}>
           <span style={{ fontSize: "28px", fontWeight: 700 }}>{stats.streak}</span>
           <span style={{ fontSize: "12px", color: "var(--text-secondary)", fontWeight: 500 }}>Day Streak</span>
         </div>
+      </div>
+
+      {/* Total Spend */}
+      <div
+        style={{
+          ...cardStyle,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: "16px",
+        }}
+      >
+        <span style={{ fontSize: "14px", color: "var(--text-secondary)", fontWeight: 500 }}>Total Spent</span>
+        <span style={{ fontSize: "22px", fontWeight: 700 }}>
+          ${stats.totalSpentUsd.toFixed(2)}
+        </span>
       </div>
 
       {/* 4) Recent Activity */}
